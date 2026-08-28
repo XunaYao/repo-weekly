@@ -20,19 +20,21 @@ export async function GET(request: Request) {
 
   // 请求 GitHub API
   const githubApiUrl = `https://api.github.com/repos/${owner}/${repo}`;
+  try {
   const response = await fetch(githubApiUrl);
   // 转换响应数据
   if(response.status === 404) {
-    return Response.json({ error: "REPOSITORY_NOT_FOUND" }, { status: 404 });
+    return Response.json({
+      error: {code: "REPOSITORY_NOT_FOUND", message: "Repository not found" } }, { status: 404 });
   } else if(response.status === 403 || response.status === 429) {
-    return Response.json({ error: "GITHUB_RATE_LIMITED" }, { status: 429 });
+    return Response.json({ error: {code: "GITHUB_RATE_LIMITED", message: "GitHub rate limit exceeded" } }, { status: 429 });
   } else if(!response.ok) {
-    return Response.json({ error: "GITHUB_API_ERROR" }, { status: 502 });
+    return Response.json({ error: {code: "GITHUB_API_ERROR", message: "Error occurred while fetching GitHub API" } }, { status: 502 });
   }
 
   const githubData = await response.json();
 
-  const repository = {
+  const data = {
     owner: githubData.owner.login,
     name: githubData.name,
     fullName: githubData.full_name,
@@ -47,6 +49,9 @@ export async function GET(request: Request) {
     updatedAt: githubData.updated_at,
 };
 
-  return Response.json(repository);
-
+  return Response.json({data});
+} catch (error) {
+  console.error("Error fetching GitHub API:", error);
+  return Response.json({ error: {code: "INTERNAL_ERROR", message: "Internal server error" } }, { status: 500 });
+}
 }
