@@ -46,7 +46,10 @@ export function RepositoryForm() {
   }
 
   return (
-    <form className="rounded-2xl bg-white p-6 text-zinc-950 shadow-2xl shadow-black/20" onSubmit={handleSubmit}>
+    <form
+      className="rounded-2xl bg-white p-6 text-zinc-950 shadow-2xl shadow-black/20"
+      onSubmit={handleSubmit}
+    >
       <label className="text-sm font-semibold" htmlFor="repository-url">
         GitHub 仓库地址
       </label>
@@ -54,7 +57,7 @@ export function RepositoryForm() {
 
       <input
         id="repository-url"
-        className="mt-5 w-full rounded-xl border border-zinc-300 px-4 py-3 text-sm outline-none transition focus:border-zinc-950 focus:ring-2 focus:ring-zinc-950/10"
+        className="mt-5 w-full rounded-xl border border-zinc-300 px-4 py-3 text-sm transition outline-none focus:border-zinc-950 focus:ring-2 focus:ring-zinc-950/10"
         type="url"
         value={repositoryUrl}
         onChange={(event) => setRepositoryUrl(event.target.value)}

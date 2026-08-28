@@ -22,7 +22,7 @@ export function RepositoryCard({ repository }: RepositoryCardProps) {
         <span className="text-zinc-500">{repository.language}</span>
       </div>
 
-      <h3 className="mt-8 break-words text-xl font-semibold tracking-tight">{repositoryName}</h3>
+      <h3 className="mt-8 text-xl font-semibold tracking-tight break-words">{repositoryName}</h3>
       <p className="mt-3 text-sm leading-6 text-zinc-400">{repository.description}</p>
 
       <a

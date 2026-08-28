@@ -37,7 +37,7 @@ export default function Home() {
       <section className="mx-auto grid max-w-6xl gap-12 px-6 py-20 lg:grid-cols-[1.2fr_0.8fr] lg:items-center lg:py-28">
         <div>
           <p className="mb-5 text-sm font-medium text-lime-300">开源项目研究与内容创作</p>
-          <h1 className="max-w-3xl text-5xl font-semibold leading-[1.05] tracking-[-0.05em] sm:text-6xl">
+          <h1 className="max-w-3xl text-5xl leading-[1.05] font-semibold tracking-[-0.05em] sm:text-6xl">
             每周发现一个值得关注的开源项目
           </h1>
           <p className="mt-6 max-w-2xl text-lg leading-8 text-zinc-400">
