@@ -18,7 +18,13 @@ export async function GET(request: Request) {
   // 请求 GitHub API
   const githubApiUrl = `https://api.github.com/repos/${owner}/${repo}`;
   try {
-    const response = await fetch(githubApiUrl);
+    // 限流说明 https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api
+    const response = await fetch(githubApiUrl, {
+    headers: {
+      Accept: "application/vnd.github+json",
+      "X-GitHub-Api-Version": "2026-03-10",
+      "User-Agent": "RepoWeekly",
+    }});
     // 转换响应数据
     if (response.status === 404) {
       return Response.json(
