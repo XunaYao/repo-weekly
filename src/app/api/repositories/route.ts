@@ -12,7 +12,15 @@ export async function GET(request: Request) {
 
   // 参数校验
   if (!owner || !repo) {
-    return Response.json({ error: "INVALID_REPOSITORY" }, { status: 400 });
+    return Response.json(
+      {
+        error: { 
+          code: "INVALID_REPOSITORY",
+          message: "Missing 'owner' or 'repo' query parameter",
+        },
+      },
+      { status: 400 },
+    );
   }
 
   // 请求 GitHub API
@@ -20,28 +28,40 @@ export async function GET(request: Request) {
   try {
     // 限流说明 https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api
     const response = await fetch(githubApiUrl, {
-    headers: {
-      Accept: "application/vnd.github+json",
-      "X-GitHub-Api-Version": "2026-03-10",
-      "User-Agent": "RepoWeekly",
-    }});
+      headers: {
+        Accept: "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2026-03-10",
+        "User-Agent": "RepoWeekly",
+      },
+    });
     // 转换响应数据
     if (response.status === 404) {
       return Response.json(
         {
-          error: { code: "REPOSITORY_NOT_FOUND", message: "Repository not found" },
+          error: {
+            code: "REPOSITORY_NOT_FOUND",
+            message: "Repository not found",
+          },
         },
         { status: 404 },
       );
     } else if (response.status === 403 || response.status === 429) {
       return Response.json(
-        { error: { code: "GITHUB_RATE_LIMITED", message: "GitHub rate limit exceeded" } },
+        {
+          error: {
+            code: "GITHUB_RATE_LIMITED",
+            message: "GitHub rate limit exceeded",
+          },
+        },
         { status: 429 },
       );
     } else if (!response.ok) {
       return Response.json(
         {
-          error: { code: "GITHUB_API_ERROR", message: "Error occurred while fetching GitHub API" },
+          error: {
+            code: "GITHUB_API_ERROR",
+            message: "Error occurred while fetching GitHub API",
+          },
         },
         { status: 502 },
       );
