@@ -23,16 +23,24 @@ export async function GET(request: Request) {
     );
   }
 
-  // 请求 GitHub API
+  // 仅在服务端读取；不要使用 NEXT_PUBLIC_ 前缀。
+  const githubToken = process.env.GITHUB_TOKEN;
   const githubApiUrl = `https://api.github.com/repos/${owner}/${repo}`;
+
   try {
-    // 限流说明 https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api
+    const headers = new Headers({
+      Accept: "application/vnd.github+json",
+      "X-GitHub-Api-Version": "2026-03-10",
+      "User-Agent": "RepoWeekly",
+    });
+
+    if (githubToken) {
+      headers.set("Authorization", `Bearer ${githubToken}`);
+    }
+
     const response = await fetch(githubApiUrl, {
-      headers: {
-        Accept: "application/vnd.github+json",
-        "X-GitHub-Api-Version": "2026-03-10",
-        "User-Agent": "RepoWeekly",
-      },
+      headers,
+      cache: "no-store",
     });
     // 转换响应数据
     if (response.status === 404) {
