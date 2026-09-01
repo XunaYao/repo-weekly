@@ -1,3 +1,5 @@
+import { cleanReadme, type CleanReadmeResult } from "@/lib/readme";
+
 // | 缺少 `owner` 或 `repo` | 400 | `INVALID_REPOSITORY` |
 // | GitHub 返回 404        | 404 | `REPOSITORY_NOT_FOUND` |
 // | GitHub 返回 403/429    | 429 | `GITHUB_RATE_LIMITED` |
@@ -9,6 +11,7 @@ export async function GET(request: Request) {
 
   const owner = url.searchParams.get("owner");
   const repo = url.searchParams.get("repo");
+  const includeReadme = url.searchParams.get("include") === "readme"; // 可选参数，默认为 false
 
   // 参数校验
   if (!owner || !repo) {
@@ -77,6 +80,47 @@ export async function GET(request: Request) {
 
     const githubData = await response.json();
 
+    let readme: CleanReadmeResult | null = null;
+
+    if (includeReadme) {
+      const readmeHeaders = new Headers(headers);
+      readmeHeaders.set("Accept", "application/vnd.github.raw+json");
+
+      const readmeUrl = `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/readme`;
+      const readmeResponse = await fetch(readmeUrl, {
+        headers: readmeHeaders,
+        cache: "no-store",
+      });
+
+      if (readmeResponse.status === 403 || readmeResponse.status === 429) {
+        return Response.json(
+          {
+            error: {
+              code: "GITHUB_RATE_LIMITED",
+              message: "GitHub rate limit exceeded",
+            },
+          },
+          { status: 429 },
+        );
+      }
+
+      if (readmeResponse.status !== 404) {
+        if (!readmeResponse.ok) {
+          return Response.json(
+            {
+              error: {
+                code: "GITHUB_API_ERROR",
+                message: "Error occurred while fetching repository README",
+              },
+            },
+            { status: 502 },
+          );
+        }
+
+        readme = cleanReadme(await readmeResponse.text());
+      }
+    }
+
     const data = {
       owner: githubData.owner.login,
       name: githubData.name,
@@ -90,6 +134,7 @@ export async function GET(request: Request) {
       topics: githubData.topics,
       defaultBranch: githubData.default_branch,
       updatedAt: githubData.updated_at,
+      ...(includeReadme ? { readme } : {}),
     };
 
     return Response.json({ data });
