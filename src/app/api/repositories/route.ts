@@ -1,148 +1,168 @@
 import { cleanReadme, type CleanReadmeResult } from "@/lib/readme";
 
-// | 缺少 `owner` 或 `repo` | 400 | `INVALID_REPOSITORY` |
-// | GitHub 返回 404        | 404 | `REPOSITORY_NOT_FOUND` |
-// | GitHub 返回 403/429    | 429 | `GITHUB_RATE_LIMITED` |
-// | GitHub 其他错误         | 502 | `GITHUB_API_ERROR` |
-// | 请求异常                | 500 | `INTERNAL_ERROR` |
+type RepositoryRequest = {
+  owner: string;
+  repo: string;
+  includeReadme: boolean;
+};
 
-export async function GET(request: Request) {
+type GitHubRepository = {
+  owner: { login: string };
+  name: string;
+  full_name: string;
+  description: string | null;
+  html_url: string;
+  stargazers_count: number;
+  forks_count: number;
+  open_issues_count: number;
+  language: string | null;
+  topics: string[];
+  default_branch: string;
+  updated_at: string;
+};
+
+type ReadmeResult =
+  | { readme: CleanReadmeResult | null }
+  | { errorResponse: Response };
+
+function jsonError(code: string, message: string, status: number) {
+  return Response.json({ error: { code, message } }, { status });
+}
+
+function getRepositoryRequest(request: Request): RepositoryRequest | null {
   const url = new URL(request.url);
-
   const owner = url.searchParams.get("owner");
   const repo = url.searchParams.get("repo");
-  const includeReadme = url.searchParams.get("include") === "readme"; // 可选参数，默认为 false
 
-  // 参数校验
   if (!owner || !repo) {
-    return Response.json(
-      {
-        error: { 
-          code: "INVALID_REPOSITORY",
-          message: "Missing 'owner' or 'repo' query parameter",
-        },
-      },
-      { status: 400 },
+    return null;
+  }
+
+  return {
+    owner,
+    repo,
+    includeReadme: url.searchParams.get("include") === "readme",
+  };
+}
+
+function createGitHubHeaders() {
+  const headers = new Headers({
+    Accept: "application/vnd.github+json",
+    "X-GitHub-Api-Version": "2026-03-10",
+    "User-Agent": "RepoWeekly",
+  });
+
+  const githubToken = process.env.GITHUB_TOKEN;
+
+  if (githubToken) {
+    headers.set("Authorization", `Bearer ${githubToken}`);
+  }
+
+  return headers;
+}
+
+function getGitHubRepositoryUrl(owner: string, repo: string) {
+  return `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`;
+}
+
+function getGitHubFailureResponse(response: Response, resource: "repository" | "README") {
+  if (response.status === 403 || response.status === 429) {
+    return jsonError("GITHUB_RATE_LIMITED", "GitHub rate limit exceeded", 429);
+  }
+
+  return jsonError(
+    "GITHUB_API_ERROR",
+    `Error occurred while fetching ${resource === "README" ? "repository README" : "GitHub API"}`,
+    502,
+  );
+}
+
+function toRepositoryData(repository: GitHubRepository, readme?: CleanReadmeResult | null) {
+  return {
+    owner: repository.owner.login,
+    name: repository.name,
+    fullName: repository.full_name,
+    description: repository.description,
+    url: repository.html_url,
+    stars: repository.stargazers_count,
+    forks: repository.forks_count,
+    openIssues: repository.open_issues_count,
+    language: repository.language,
+    topics: repository.topics,
+    defaultBranch: repository.default_branch,
+    updatedAt: repository.updated_at,
+    ...(readme !== undefined ? { readme } : {}),
+  };
+}
+
+async function getReadme(
+  owner: string,
+  repo: string,
+  headers: Headers,
+): Promise<ReadmeResult> {
+  const readmeHeaders = new Headers(headers);
+  readmeHeaders.set("Accept", "application/vnd.github.raw+json");
+
+  const response = await fetch(`${getGitHubRepositoryUrl(owner, repo)}/readme`, {
+    headers: readmeHeaders,
+    cache: "no-store",
+  });
+
+  if (response.status === 404) {
+    return { readme: null };
+  }
+
+  if (!response.ok) {
+    return { errorResponse: getGitHubFailureResponse(response, "README") };
+  }
+
+  return { readme: cleanReadme(await response.text()) };
+}
+
+export async function GET(request: Request) {
+  const repositoryRequest = getRepositoryRequest(request);
+
+  if (!repositoryRequest) {
+    return jsonError(
+      "INVALID_REPOSITORY",
+      "Missing 'owner' or 'repo' query parameter",
+      400,
     );
   }
 
-  // 仅在服务端读取；不要使用 NEXT_PUBLIC_ 前缀。
-  const githubToken = process.env.GITHUB_TOKEN;
-  const githubApiUrl = `https://api.github.com/repos/${owner}/${repo}`;
+  const { owner, repo, includeReadme } = repositoryRequest;
 
   try {
-    const headers = new Headers({
-      Accept: "application/vnd.github+json",
-      "X-GitHub-Api-Version": "2026-03-10",
-      "User-Agent": "RepoWeekly",
-    });
-
-    if (githubToken) {
-      headers.set("Authorization", `Bearer ${githubToken}`);
-    }
-
-    const response = await fetch(githubApiUrl, {
+    const headers = createGitHubHeaders();
+    const response = await fetch(getGitHubRepositoryUrl(owner, repo), {
       headers,
       cache: "no-store",
     });
-    // 转换响应数据
+
     if (response.status === 404) {
-      return Response.json(
-        {
-          error: {
-            code: "REPOSITORY_NOT_FOUND",
-            message: "Repository not found",
-          },
-        },
-        { status: 404 },
-      );
-    } else if (response.status === 403 || response.status === 429) {
-      return Response.json(
-        {
-          error: {
-            code: "GITHUB_RATE_LIMITED",
-            message: "GitHub rate limit exceeded",
-          },
-        },
-        { status: 429 },
-      );
-    } else if (!response.ok) {
-      return Response.json(
-        {
-          error: {
-            code: "GITHUB_API_ERROR",
-            message: "Error occurred while fetching GitHub API",
-          },
-        },
-        { status: 502 },
-      );
+      return jsonError("REPOSITORY_NOT_FOUND", "Repository not found", 404);
     }
 
-    const githubData = await response.json();
-
-    let readme: CleanReadmeResult | null = null;
-
-    if (includeReadme) {
-      const readmeHeaders = new Headers(headers);
-      readmeHeaders.set("Accept", "application/vnd.github.raw+json");
-
-      const readmeUrl = `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/readme`;
-      const readmeResponse = await fetch(readmeUrl, {
-        headers: readmeHeaders,
-        cache: "no-store",
-      });
-
-      if (readmeResponse.status === 403 || readmeResponse.status === 429) {
-        return Response.json(
-          {
-            error: {
-              code: "GITHUB_RATE_LIMITED",
-              message: "GitHub rate limit exceeded",
-            },
-          },
-          { status: 429 },
-        );
-      }
-
-      if (readmeResponse.status !== 404) {
-        if (!readmeResponse.ok) {
-          return Response.json(
-            {
-              error: {
-                code: "GITHUB_API_ERROR",
-                message: "Error occurred while fetching repository README",
-              },
-            },
-            { status: 502 },
-          );
-        }
-
-        readme = cleanReadme(await readmeResponse.text());
-      }
+    if (!response.ok) {
+      return getGitHubFailureResponse(response, "repository");
     }
 
-    const data = {
-      owner: githubData.owner.login,
-      name: githubData.name,
-      fullName: githubData.full_name,
-      description: githubData.description,
-      url: githubData.html_url,
-      stars: githubData.stargazers_count,
-      forks: githubData.forks_count,
-      openIssues: githubData.open_issues_count,
-      language: githubData.language,
-      topics: githubData.topics,
-      defaultBranch: githubData.default_branch,
-      updatedAt: githubData.updated_at,
-      ...(includeReadme ? { readme } : {}),
-    };
+    const repository = (await response.json()) as GitHubRepository;
 
-    return Response.json({ data });
+    if (!includeReadme) {
+      return Response.json({ data: toRepositoryData(repository) });
+    }
+
+    const readmeResult = await getReadme(owner, repo, headers);
+
+    if ("errorResponse" in readmeResult) {
+      return readmeResult.errorResponse;
+    }
+
+    return Response.json({ data: toRepositoryData(repository, readmeResult.readme) });
   } catch (error) {
     console.error("Error fetching GitHub API:", error);
-    return Response.json(
-      { error: { code: "INTERNAL_ERROR", message: "Internal server error" } },
-      { status: 500 },
-    );
+
+    return jsonError("INTERNAL_ERROR", "Internal server error", 500);
   }
 }
