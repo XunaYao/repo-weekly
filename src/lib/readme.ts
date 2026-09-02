@@ -15,6 +15,9 @@ export function cleanReadme(markdown: string): CleanReadmeResult {
     .replace(/\r\n?/g, "\n")
     .replace(/<!--[\s\S]*?-->/g, "")
     .replace(/!\[[^\]]*]\([^)]*\)/g, "")
+    .replace(/<picture\b[^>]*>[\s\S]*?<\/picture>/gi, "")
+    .replace(/<(?:img|source)\b[^>]*>/gi, "")
+    .replace(/<a\b[^>]*>\s*<\/a>/gi, "")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
 
