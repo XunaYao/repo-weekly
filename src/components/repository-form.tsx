@@ -1,30 +1,20 @@
 "use client";
 
 import { FormEvent, useState } from "react";
+import { ResearchResult } from "@/components/research-result";
+import type { RepositoryData, ResearchRepositoryData } from "@/lib/repository";
+import type { ResearchResult as ResearchResultData, ResearchSource } from "@/lib/research";
 
 type RepositoryInput = {
   owner: string;
   name: string;
 };
 
-type RepositoryDetails = {
-  owner: string;
-  name: string;
-  fullName: string;
-  description: string | null;
-  url: string;
-  stars: number;
-  forks: number;
-  openIssues: number;
-  language: string | null;
-  topics: string[];
-  defaultBranch: string;
-  updatedAt: string;
-};
-
-type RepositoryApiResponse =
-  | { data: RepositoryDetails }
+type ApiResponse<T> =
+  | { data: T }
   | { error: { code: string; message: string } };
+
+type ResearchStatus = "idle" | "loadingRepository" | "generatingResearch";
 
 function parseGitHubRepository(value: string): RepositoryInput | null {
   try {
@@ -48,11 +38,34 @@ function formatNumber(value: number) {
   return new Intl.NumberFormat("zh-CN", { notation: "compact", maximumFractionDigits: 1 }).format(value);
 }
 
+function createResearchSource(repository: RepositoryData): ResearchSource {
+  const researchRepository: ResearchRepositoryData = {
+    fullName: repository.fullName,
+    description: repository.description,
+    url: repository.url,
+    stars: repository.stars,
+    forks: repository.forks,
+    openIssues: repository.openIssues,
+    language: repository.language,
+    topics: repository.topics,
+    defaultBranch: repository.defaultBranch,
+    updatedAt: repository.updatedAt,
+  };
+
+  return {
+    repository: researchRepository,
+    readme: repository.readme ?? null,
+  };
+}
+
 export function RepositoryForm() {
   const [repositoryUrl, setRepositoryUrl] = useState("");
   const [error, setError] = useState("");
-  const [repository, setRepository] = useState<RepositoryDetails | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
+  const [researchError, setResearchError] = useState("");
+  const [repository, setRepository] = useState<RepositoryData | null>(null);
+  const [research, setResearch] = useState<ResearchResultData | null>(null);
+  const [status, setStatus] = useState<ResearchStatus>("idle");
+  const isLoading = status !== "idle";
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -61,18 +74,26 @@ export function RepositoryForm() {
 
     if (!input) {
       setRepository(null);
+      setResearch(null);
       setError("请输入完整的 GitHub 仓库地址，例如 https://github.com/vercel/next.js");
       return;
     }
 
     setError("");
+    setResearchError("");
     setRepository(null);
-    setIsLoading(true);
+    setResearch(null);
+    setStatus("loadingRepository");
+    let isResearchStep = false;
 
     try {
-      const searchParams = new URLSearchParams({ owner: input.owner, repo: input.name });
+      const searchParams = new URLSearchParams({
+        owner: input.owner,
+        repo: input.name,
+        include: "readme",
+      });
       const response = await fetch(`/api/repositories?${searchParams}`);
-      const payload: RepositoryApiResponse = await response.json();
+      const payload: ApiResponse<RepositoryData> = await response.json();
 
       if ("error" in payload) {
         setError(payload.error.message);
@@ -80,10 +101,31 @@ export function RepositoryForm() {
       }
 
       setRepository(payload.data);
+
+      setStatus("generatingResearch");
+      isResearchStep = true;
+
+      const researchResponse = await fetch("/api/research", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ source: createResearchSource(payload.data) }),
+      });
+      const researchPayload: ApiResponse<ResearchResultData> = await researchResponse.json();
+
+      if ("error" in researchPayload) {
+        setResearchError(researchPayload.error.message);
+        return;
+      }
+
+      setResearch(researchPayload.data);
     } catch {
-      setError("暂时无法连接服务，请稍后再试。");
+      if (isResearchStep) {
+        setResearchError("暂时无法生成研究结论，请稍后再试。");
+      } else {
+        setError("暂时无法连接服务，请稍后再试。");
+      }
     } finally {
-      setIsLoading(false);
+      setStatus("idle");
     }
   }
 
@@ -122,7 +164,11 @@ export function RepositoryForm() {
           type="submit"
           disabled={!repositoryUrl.trim() || isLoading}
         >
-          {isLoading ? "正在读取仓库…" : "开始研究"}
+          {status === "loadingRepository"
+            ? "正在读取仓库…"
+            : status === "generatingResearch"
+              ? "正在分析项目…"
+              : "开始研究"}
         </button>
       </form>
 
@@ -179,6 +225,14 @@ export function RepositoryForm() {
           </a>
         </section>
       ) : null}
+
+      {researchError ? (
+        <p className="rounded-xl border border-amber-300/20 bg-amber-300/10 px-4 py-3 text-sm text-amber-100" role="alert">
+          {researchError}
+        </p>
+      ) : null}
+
+      {research ? <ResearchResult research={research} /> : null}
     </div>
   );
 }
