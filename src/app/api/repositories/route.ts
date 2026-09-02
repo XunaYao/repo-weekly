@@ -1,4 +1,6 @@
 import { cleanReadme, type CleanReadmeResult } from "@/lib/readme";
+import { jsonError } from "@/lib/api-response";
+import type { RepositoryData } from "@/lib/repository";
 
 type RepositoryRequest = {
   owner: string;
@@ -24,10 +26,6 @@ type GitHubRepository = {
 type ReadmeResult =
   | { readme: CleanReadmeResult | null }
   | { errorResponse: Response };
-
-function jsonError(code: string, message: string, status: number) {
-  return Response.json({ error: { code, message } }, { status });
-}
 
 function getRepositoryRequest(request: Request): RepositoryRequest | null {
   const url = new URL(request.url);
@@ -77,7 +75,10 @@ function getGitHubFailureResponse(response: Response, resource: "repository" | "
   );
 }
 
-function toRepositoryData(repository: GitHubRepository, readme?: CleanReadmeResult | null) {
+function toRepositoryData(
+  repository: GitHubRepository,
+  readme?: CleanReadmeResult | null,
+): RepositoryData {
   return {
     owner: repository.owner.login,
     name: repository.name,

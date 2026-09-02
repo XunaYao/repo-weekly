@@ -26,3 +26,13 @@ export type ResearchResult = {
     source: "repository" | "readme";
   }>;
 };
+
+export type ResearchSource = {
+  /** 仓库的基础资料，用于为研究结论提供可验证的上下文。 */
+  repository: ResearchRepositoryData;
+
+  /** 已清理的 README 正文；仓库不存在 README 时为 null。 */
+  readme: CleanReadmeResult | null;
+};
+import type { CleanReadmeResult } from "@/lib/readme";
+import type { ResearchRepositoryData } from "@/lib/repository";
