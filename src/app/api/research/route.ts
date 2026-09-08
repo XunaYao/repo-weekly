@@ -56,7 +56,7 @@ export async function POST(request: Request) {
     return Response.json({ data });
   } catch (error) {
     if (error instanceof ZhipuApiError) {
-      return jsonError("ZHIPU_API_ERROR", error.message, error.status);
+      return jsonError(error.code, error.message, error.status);
     }
 
     console.error("Error generating repository research:", error);

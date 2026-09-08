@@ -1,3 +1,6 @@
+import type { CleanReadmeResult } from "@/lib/readme";
+import type { ResearchRepositoryData } from "@/lib/repository";
+
 export type ResearchResult = {
   /** 面向不了解该项目的读者，用 2～3 句话说明项目的定位、用途与价值。 */
   summary: string;
@@ -34,5 +37,3 @@ export type ResearchSource = {
   /** 已清理的 README 正文；仓库不存在 README 时为 null。 */
   readme: CleanReadmeResult | null;
 };
-import type { CleanReadmeResult } from "@/lib/readme";
-import type { ResearchRepositoryData } from "@/lib/repository";

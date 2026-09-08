@@ -28,8 +28,16 @@ type ZhipuResponse = {
   };
 };
 
+export type ZhipuErrorCode =
+  | "ZHIPU_NOT_CONFIGURED"
+  | "ZHIPU_AUTH_ERROR"
+  | "ZHIPU_UNAVAILABLE"
+  | "ZHIPU_API_ERROR"
+  | "MODEL_RESPONSE_INVALID";
+
 export class ZhipuApiError extends Error {
   constructor(
+    readonly code: ZhipuErrorCode,
     message: string,
     readonly status: number,
   ) {
@@ -41,52 +49,120 @@ function isStringArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every((item) => typeof item === "string");
 }
 
-function isResearchResult(value: unknown): value is ResearchResult {
+function getResearchResultValidationError(value: unknown): string | null {
   if (!value || typeof value !== "object") {
-    return false;
+    return "root value must be an object";
   }
 
   const result = value as Record<string, unknown>;
 
-  return (
-    typeof result.summary === "string" &&
-    isStringArray(result.targetUsers) &&
-    isStringArray(result.coreCapabilities) &&
-    isStringArray(result.technicalHighlights) &&
-    isStringArray(result.contentAngles) &&
-    isStringArray(result.risks) &&
-    Array.isArray(result.evidence) &&
-    result.evidence.every(
-      (item) =>
-        typeof item === "object" &&
-        item !== null &&
-        typeof (item as Record<string, unknown>).claim === "string" &&
-        ["repository", "readme"].includes((item as Record<string, unknown>).source as string),
-    )
-  );
+  if (typeof result.summary !== "string") {
+    return "summary must be a string";
+  }
+
+  const stringArrayFields = [
+    "targetUsers",
+    "coreCapabilities",
+    "technicalHighlights",
+    "contentAngles",
+    "risks",
+  ] as const;
+
+  for (const field of stringArrayFields) {
+    if (!isStringArray(result[field])) {
+      return `${field} must be an array of strings`;
+    }
+  }
+
+  if (!Array.isArray(result.evidence)) {
+    return "evidence must be an array";
+  }
+
+  for (const [index, item] of result.evidence.entries()) {
+    if (!item || typeof item !== "object") {
+      return `evidence[${index}] must be an object`;
+    }
+
+    const evidence = item as Record<string, unknown>;
+
+    if (typeof evidence.claim !== "string") {
+      return `evidence[${index}].claim must be a string`;
+    }
+
+    if (evidence.source !== "repository" && evidence.source !== "readme") {
+      return `evidence[${index}].source must be repository or readme`;
+    }
+  }
+
+  return null;
+}
+
+function logInvalidResearchResult(reason: string, content: string) {
+  if (process.env.NODE_ENV !== "production") {
+    console.error(`[Zhipu invalid research result] ${reason}\n`, content.slice(0, 10_000));
+  }
 }
 
 function parseResearchResult(content: string): ResearchResult {
   const json = content.trim().replace(/^```json\s*|\s*```$/g, "");
+  let result: unknown;
 
   try {
-    const result: unknown = JSON.parse(json);
-
-    if (isResearchResult(result)) {
-      return result;
-    }
-  } catch {
-    // The error below gives callers a stable, provider-independent failure message.
+    result = JSON.parse(json);
+  } catch (error) {
+    const reason = error instanceof Error ? `invalid JSON: ${error.message}` : "invalid JSON";
+    logInvalidResearchResult(reason, content);
+    throw new ZhipuApiError(
+      "MODEL_RESPONSE_INVALID",
+      "模型返回的研究结果不是有效 JSON",
+      502,
+    );
   }
 
-  throw new ZhipuApiError("Model returned an invalid research result", 502);
+  const validationError = getResearchResultValidationError(result);
+
+  if (validationError) {
+    logInvalidResearchResult(validationError, content);
+    throw new ZhipuApiError(
+      "MODEL_RESPONSE_INVALID",
+      "模型返回的研究结果格式无效",
+      502,
+    );
+  }
+
+  return result as ResearchResult;
+}
+
+function getZhipuFailure(response: Response, payload: ZhipuResponse) {
+  const providerMessage = payload.error?.message ?? "Zhipu API request failed";
+  const normalizedMessage = providerMessage.toLowerCase();
+  const isUnavailable =
+    response.status === 429 ||
+    response.status >= 500 ||
+    ["访问量过大", "稍后再试", "繁忙", "busy", "overloaded"].some((keyword) =>
+      normalizedMessage.includes(keyword),
+    );
+
+  if (response.status === 401 || response.status === 403) {
+    return new ZhipuApiError("ZHIPU_AUTH_ERROR", "智谱 API 身份验证失败", 502);
+  }
+
+  if (isUnavailable) {
+    return new ZhipuApiError("ZHIPU_UNAVAILABLE", "智谱模型当前繁忙，请稍后再试", 503);
+  }
+
+  return new ZhipuApiError("ZHIPU_API_ERROR", providerMessage, 502);
 }
 
 export async function generateResearch(source: ResearchSource): Promise<ResearchResult> {
   const apiKey = process.env.ZHIPU_API_KEY;
 
   if (!apiKey) {
-    throw new ZhipuApiError("ZHIPU_API_KEY is not configured", 500);
+    throw new ZhipuApiError(
+      "ZHIPU_NOT_CONFIGURED",
+      "ZHIPU_API_KEY is not configured",
+      500,
+    );
   }
 
   const response = await fetch(ZHIPU_API_URL, {
@@ -128,16 +204,17 @@ ${RESEARCH_RESULT_SCHEMA}
   const payload = (await response.json()) as ZhipuResponse;
 
   if (!response.ok) {
-    throw new ZhipuApiError(payload.error?.message ?? "Zhipu API request failed", 502);
+    throw getZhipuFailure(response, payload);
   }
-
 
   const content = payload.choices?.[0]?.message?.content;
 
-  console.log("[Zhipu raw content]\n", content);
-
   if (!content) {
-    throw new ZhipuApiError("Zhipu API returned an empty response", 502);
+    throw new ZhipuApiError(
+      "MODEL_RESPONSE_INVALID",
+      "智谱模型返回了空内容",
+      502,
+    );
   }
 
   return parseResearchResult(content);
