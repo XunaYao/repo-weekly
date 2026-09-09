@@ -2,7 +2,7 @@
 
 import { FormEvent, useState } from "react";
 import { ResearchResult } from "@/components/research-result";
-import type { RepositoryData, ResearchRepositoryData } from "@/lib/repository";
+import type { RepositoryData } from "@/lib/repository";
 import type { ResearchResult as ResearchResultData, ResearchSource } from "@/lib/research";
 
 type RepositoryInput = {
@@ -39,7 +39,7 @@ function formatNumber(value: number) {
 }
 
 function createResearchSource(repository: RepositoryData): ResearchSource {
-  const researchRepository: ResearchRepositoryData = {
+  const researchRepository: ResearchSource["repository"] = {
     fullName: repository.fullName,
     description: repository.description,
     url: repository.url,

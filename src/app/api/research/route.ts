@@ -1,53 +1,14 @@
-import { generateResearch, ZhipuApiError } from "@/lib/zhipu";
 import { jsonError } from "@/lib/api-response";
-import type { ResearchSource } from "@/lib/research";
-
-function isResearchSource(value: unknown): value is ResearchSource {
-  if (!value || typeof value !== "object") {
-    return false;
-  }
-
-  const source = value as Record<string, unknown>;
-  const repository = source.repository;
-  const readme = source.readme;
-
-  if (!repository || typeof repository !== "object") {
-    return false;
-  }
-
-  const data = repository as Record<string, unknown>;
-  const hasValidReadme =
-    readme === null ||
-    (typeof readme === "object" &&
-      readme !== null &&
-      typeof (readme as Record<string, unknown>).content === "string" &&
-      typeof (readme as Record<string, unknown>).truncated === "boolean");
-
-  return (
-    typeof data.fullName === "string" &&
-    (typeof data.description === "string" || data.description === null) &&
-    typeof data.url === "string" &&
-    typeof data.stars === "number" &&
-    typeof data.forks === "number" &&
-    typeof data.openIssues === "number" &&
-    (typeof data.language === "string" || data.language === null) &&
-    Array.isArray(data.topics) &&
-    data.topics.every((topic) => typeof topic === "string") &&
-    typeof data.defaultBranch === "string" &&
-    typeof data.updatedAt === "string" &&
-    hasValidReadme
-  );
-}
+import { generateResearch } from "@/lib/research-generator";
+import { parseResearchRequest } from "@/lib/research";
+import { ZhipuApiError } from "@/lib/zhipu";
 
 export async function POST(request: Request) {
   try {
-    const body: unknown = await request.json();
-    const source =
-      body && typeof body === "object"
-        ? (body as { source?: unknown }).source
-        : undefined;
+    const body: unknown = await request.json().catch(() => null);
+    const source = parseResearchRequest(body);
 
-    if (!isResearchSource(source)) {
+    if (!source) {
       return jsonError("INVALID_RESEARCH_SOURCE", "Invalid repository research source", 400);
     }
 
