@@ -21,20 +21,12 @@ function parseResearchResult(content: string): ResearchResult {
   } catch (error) {
     const reason = error instanceof Error ? `invalid JSON: ${error.message}` : "invalid JSON";
     logInvalidResearchResult(reason, content);
-    throw new ZhipuApiError(
-      "MODEL_RESPONSE_INVALID",
-      "模型返回的研究结果不是有效 JSON",
-      502,
-    );
+    throw new ZhipuApiError("MODEL_RESPONSE_INVALID", "模型返回的研究结果不是有效 JSON", 502);
   }
 
   if (!isResearchResult(result)) {
     logInvalidResearchResult("result does not match the required structure", content);
-    throw new ZhipuApiError(
-      "MODEL_RESPONSE_INVALID",
-      "模型返回的研究结果格式无效",
-      502,
-    );
+    throw new ZhipuApiError("MODEL_RESPONSE_INVALID", "模型返回的研究结果格式无效", 502);
   }
 
   return result;
@@ -56,6 +48,11 @@ ${RESEARCH_RESULT_FORMAT}
 - 不要返回、复述或嵌套输入中的 repository、readme 或 source。
 - 所有字段都必须存在；没有内容时使用空数组 []，不要省略字段。
 - 所有面向用户的文本内容必须使用简体中文。
+- repository.language 表示仓库自身的主要实现语言，不能直接当作该项目支持的目标项目语言。
+- compatibility.scope 为 language-agnostic 时，supportedLanguages 必须为 []，不要枚举 Java、JavaScript、Python 等所有语言。
+- 只有资料明确说明项目限制或支持特定目标项目语言时，才使用 language-specific 并填写 supportedLanguages。
+- supportedTools 记录编辑器、AI Agent、框架或其他宿主工具，不要把它们写入 supportedLanguages。
+- 无法从资料判断兼容性时使用 unknown，并将待确认信息写入 notes 或 risks。
 - evidence.source 只能是 repository 或 readme。`,
       },
       {

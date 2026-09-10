@@ -1,7 +1,31 @@
 import type { CleanReadmeResult } from "@/lib/readme";
 import type { ResearchRepositoryData } from "@/lib/repository";
 
+/** 项目可以在哪些编程语言、工具和运行环境中使用。 */
+export type ProjectCompatibility = {
+  /** 项目是否限制目标项目的编程语言；unknown 表示现有资料无法判断。 */
+  scope: "language-agnostic" | "language-specific" | "unknown";
+
+  /** scope 为 language-specific 时列出明确支持的目标项目语言。 */
+  supportedLanguages: string[];
+
+  /** 项目明确支持或集成的编辑器、AI Agent、框架或宿主工具。 */
+  supportedTools: string[];
+
+  /** 使用该项目所需的运行时、版本、账号或其他前置条件。 */
+  requirements: string[];
+
+  /** 无法用以上字段表达的兼容性限制或补充说明。 */
+  notes: string[];
+};
+
 export type ResearchResult = {
+  /** 项目的产品或技术类别，例如前端框架、CLI 工具、数据库或 AI 应用。 */
+  projectType: string;
+
+  /** 项目的目标语言兼容性、支持工具及使用要求。 */
+  compatibility: ProjectCompatibility;
+
   /** 面向不了解该项目的读者，用 2～3 句话说明项目的定位、用途与价值。 */
   summary: string;
 
@@ -39,6 +63,14 @@ export type ResearchSource = {
 };
 
 export const RESEARCH_RESULT_FORMAT = `{
+  "projectType": "项目类型，例如前端框架、CLI 工具、数据库或 AI 应用",
+  "compatibility": {
+    "scope": "language-agnostic | language-specific | unknown",
+    "supportedLanguages": ["仅在 language-specific 时列出明确支持的目标项目语言"],
+    "supportedTools": ["明确支持或集成的工具、框架或宿主环境"],
+    "requirements": ["运行时、版本、账号或其他前置条件"],
+    "notes": ["兼容性限制或补充说明"]
+  },
   "summary": "用 2～3 句话概括项目定位、用途与价值",
   "targetUsers": ["适合的用户、团队或使用场景"],
   "coreCapabilities": ["一项可验证的核心能力"],
@@ -82,9 +114,7 @@ function isResearchRepository(value: unknown): value is ResearchRepositoryData {
 
 function isReadme(value: unknown): value is CleanReadmeResult {
   return (
-    isRecord(value) &&
-    typeof value.content === "string" &&
-    typeof value.truncated === "boolean"
+    isRecord(value) && typeof value.content === "string" && typeof value.truncated === "boolean"
   );
 }
 
@@ -93,6 +123,27 @@ function isEvidence(value: unknown): value is ResearchResult["evidence"][number]
     isRecord(value) &&
     typeof value.claim === "string" &&
     (value.source === "repository" || value.source === "readme")
+  );
+}
+
+function isCompatibility(value: unknown): value is ProjectCompatibility {
+  if (!isRecord(value) || !isStringArray(value.supportedLanguages)) {
+    return false;
+  }
+
+  const hasValidLanguageList =
+    value.scope === "language-specific"
+      ? value.supportedLanguages.length > 0
+      : value.supportedLanguages.length === 0;
+
+  return (
+    (value.scope === "language-agnostic" ||
+      value.scope === "language-specific" ||
+      value.scope === "unknown") &&
+    hasValidLanguageList &&
+    isStringArray(value.supportedTools) &&
+    isStringArray(value.requirements) &&
+    isStringArray(value.notes)
   );
 }
 
@@ -111,6 +162,8 @@ export function parseResearchRequest(value: unknown): ResearchSource | null {
 export function isResearchResult(value: unknown): value is ResearchResult {
   return (
     isRecord(value) &&
+    typeof value.projectType === "string" &&
+    isCompatibility(value.compatibility) &&
     typeof value.summary === "string" &&
     resultStringArrayFields.every((field) => isStringArray(value[field])) &&
     Array.isArray(value.evidence) &&
