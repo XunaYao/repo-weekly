@@ -1,5 +1,6 @@
 import type { CleanReadmeResult } from "@/lib/readme";
 import type { ResearchRepositoryData } from "@/lib/repository";
+import { isRecord, isStringArray } from "@/lib/validation";
 
 /** 项目可以在哪些编程语言、工具和运行环境中使用。 */
 export type ProjectCompatibility = {
@@ -89,14 +90,6 @@ const resultStringArrayFields = [
   "contentAngles",
   "risks",
 ] as const;
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
-
-function isStringArray(value: unknown): value is string[] {
-  return Array.isArray(value) && value.every((item) => typeof item === "string");
-}
 
 function isResearchRepository(value: unknown): value is ResearchRepositoryData {
   if (!isRecord(value)) {
