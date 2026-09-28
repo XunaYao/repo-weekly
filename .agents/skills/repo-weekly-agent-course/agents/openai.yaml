@@ -1,0 +1,4 @@
+interface:
+  display_name: "RepoWeekly Agent 开发课程"
+  short_description: "以阶段交付和产品指标推进 GitHub 内容 Agent 学习"
+  default_prompt: "使用 $repo-weekly-agent-course 继续 RepoWeekly Agent 开发课程，并按当前计划推进下一个阶段。"
