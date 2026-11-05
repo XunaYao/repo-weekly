@@ -1,22 +1,51 @@
 import { jsonError } from "@/lib/api-response";
 import { parseContentRequest } from "@/lib/content";
+import { generateContent } from "@/lib/content-generator";
+import { recordContentGenerationMetric } from "@/lib/content-metrics";
+import { ZhipuApiError } from "@/lib/zhipu";
 
 export async function POST(request: Request) {
-  // 注意: 这里的 request.json() 方法返回的是一个 Promise 对象，它会尝试解析请求体中的 JSON 数据。
-  // 如果解析失败（例如请求体不是有效的 JSON），我们使用 .catch(() => null) 来捕获错误并返回 null，以避免抛出异常。
-  // unknown： TypeScript 类型不会检查真实的 HTTP 请求内容。
-  const body: unknown = await request.json().catch(() => null);
+  const startedAt = performance.now();
+  let repositoryFullName: string | null = null;
+
   try {
+    const body: unknown = await request.json().catch(() => null);
     const contentSource = parseContentRequest(body);
+
     if (!contentSource) {
       return jsonError("INVALID_CONTENT_SOURCE", "Invalid content generation source", 400);
     }
-    return jsonError(
-      "CONTENT_GENERATION_NOT_IMPLEMENTED",
-      "Content generation is not implemented yet",
-      501,
-    );
+
+    repositoryFullName = contentSource.repository.fullName;
+    const data = await generateContent(contentSource);
+
+    recordContentGenerationMetric({
+      repositoryFullName,
+      durationMs: Math.round(performance.now() - startedAt),
+      outcome: "success",
+      modelCalls: 1,
+      structureValid: true,
+    });
+
+    return Response.json({ data });
   } catch (error) {
+    const zhipuError = error instanceof ZhipuApiError ? error : null;
+
+    if (repositoryFullName) {
+      recordContentGenerationMetric({
+        repositoryFullName,
+        durationMs: Math.round(performance.now() - startedAt),
+        outcome: "failure",
+        errorCode: zhipuError?.code ?? "INTERNAL_ERROR",
+        modelCalls: 1,
+        structureValid: false,
+      });
+    }
+
+    if (zhipuError) {
+      return jsonError(zhipuError.code, zhipuError.message, zhipuError.status);
+    }
+
     console.error("Error handling content generation request:", error);
     return jsonError("INTERNAL_ERROR", "Internal server error", 500);
   }

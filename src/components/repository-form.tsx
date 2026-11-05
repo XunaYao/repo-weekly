@@ -1,7 +1,9 @@
 "use client";
 
 import { FormEvent, useState } from "react";
+import { ContentDrafts } from "@/components/content-drafts";
 import { ResearchResult } from "@/components/research-result";
+import type { ContentDraftResult, ContentSource } from "@/lib/content";
 import type { RepositoryData } from "@/lib/repository";
 import type { ResearchResult as ResearchResultData, ResearchSource } from "@/lib/research";
 
@@ -10,11 +12,10 @@ type RepositoryInput = {
   name: string;
 };
 
-type ApiResponse<T> =
-  | { data: T }
-  | { error: { code: string; message: string } };
+type ApiResponse<T> = { data: T } | { error: { code: string; message: string } };
 
 type ResearchStatus = "idle" | "loadingRepository" | "generatingResearch";
+type ContentFeedback = "usable" | "needs-rewrite";
 
 function parseGitHubRepository(value: string): RepositoryInput | null {
   try {
@@ -35,7 +36,9 @@ function parseGitHubRepository(value: string): RepositoryInput | null {
 }
 
 function formatNumber(value: number) {
-  return new Intl.NumberFormat("zh-CN", { notation: "compact", maximumFractionDigits: 1 }).format(value);
+  return new Intl.NumberFormat("zh-CN", { notation: "compact", maximumFractionDigits: 1 }).format(
+    value,
+  );
 }
 
 function createResearchSource(repository: RepositoryData): ResearchSource {
@@ -58,13 +61,33 @@ function createResearchSource(repository: RepositoryData): ResearchSource {
   };
 }
 
+function createContentSource(
+  repository: RepositoryData,
+  research: ResearchResultData,
+): ContentSource {
+  return {
+    repository: {
+      fullName: repository.fullName,
+      url: repository.url,
+      description: repository.description,
+      language: repository.language,
+      topics: repository.topics,
+    },
+    research,
+  };
+}
+
 export function RepositoryForm() {
   const [repositoryUrl, setRepositoryUrl] = useState("");
   const [error, setError] = useState("");
   const [researchError, setResearchError] = useState("");
+  const [contentError, setContentError] = useState("");
   const [repository, setRepository] = useState<RepositoryData | null>(null);
   const [research, setResearch] = useState<ResearchResultData | null>(null);
+  const [contentDrafts, setContentDrafts] = useState<ContentDraftResult | null>(null);
+  const [contentFeedback, setContentFeedback] = useState<ContentFeedback | null>(null);
   const [status, setStatus] = useState<ResearchStatus>("idle");
+  const [isGeneratingContent, setIsGeneratingContent] = useState(false);
   const isLoading = status !== "idle";
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -75,14 +98,20 @@ export function RepositoryForm() {
     if (!input) {
       setRepository(null);
       setResearch(null);
+      setContentDrafts(null);
+      setContentFeedback(null);
+      setContentError("");
       setError("请输入完整的 GitHub 仓库地址，例如 https://github.com/vercel/next.js");
       return;
     }
 
     setError("");
     setResearchError("");
+    setContentError("");
     setRepository(null);
     setResearch(null);
+    setContentDrafts(null);
+    setContentFeedback(null);
     setStatus("loadingRepository");
     let isResearchStep = false;
 
@@ -126,6 +155,55 @@ export function RepositoryForm() {
       }
     } finally {
       setStatus("idle");
+    }
+  }
+
+  async function handleGenerateContent() {
+    if (!repository || !research || isGeneratingContent) {
+      return;
+    }
+
+    setContentError("");
+    setContentDrafts(null);
+    setContentFeedback(null);
+    setIsGeneratingContent(true);
+
+    try {
+      const response = await fetch("/api/content", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ source: createContentSource(repository, research) }),
+      });
+      const payload: ApiResponse<ContentDraftResult> = await response.json();
+
+      if ("error" in payload) {
+        setContentError(payload.error.message);
+        return;
+      }
+
+      setContentDrafts(payload.data);
+    } catch {
+      setContentError("暂时无法生成内容草稿，请稍后再试。");
+    } finally {
+      setIsGeneratingContent(false);
+    }
+  }
+
+  async function handleContentFeedback(feedback: ContentFeedback) {
+    if (!repository) {
+      return;
+    }
+
+    setContentFeedback(feedback);
+
+    try {
+      await fetch("/api/content/feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ repositoryFullName: repository.fullName, feedback }),
+      });
+    } catch {
+      // 反馈采集失败不影响草稿阅读与编辑。
     }
   }
 
@@ -173,7 +251,10 @@ export function RepositoryForm() {
       </form>
 
       {repository ? (
-        <section className="rounded-2xl border border-lime-300/30 bg-lime-300/10 p-5" aria-live="polite">
+        <section
+          className="rounded-2xl border border-lime-300/30 bg-lime-300/10 p-5"
+          aria-live="polite"
+        >
           <div className="flex items-start justify-between gap-4">
             <div>
               <p className="text-xs font-medium text-lime-300">已读取仓库</p>
@@ -201,14 +282,19 @@ export function RepositoryForm() {
             </div>
             <div>
               <dt className="text-zinc-500">Issues</dt>
-              <dd className="mt-1 font-semibold text-white">{formatNumber(repository.openIssues)}</dd>
+              <dd className="mt-1 font-semibold text-white">
+                {formatNumber(repository.openIssues)}
+              </dd>
             </div>
           </dl>
 
           {repository.topics.length > 0 ? (
             <ul className="mt-4 flex flex-wrap gap-2" aria-label="仓库主题">
               {repository.topics.slice(0, 5).map((topic) => (
-                <li key={topic} className="rounded-full bg-white/10 px-2.5 py-1 text-xs text-zinc-300">
+                <li
+                  key={topic}
+                  className="rounded-full bg-white/10 px-2.5 py-1 text-xs text-zinc-300"
+                >
                   {topic}
                 </li>
               ))}
@@ -227,12 +313,58 @@ export function RepositoryForm() {
       ) : null}
 
       {researchError ? (
-        <p className="rounded-xl border border-amber-300/20 bg-amber-300/10 px-4 py-3 text-sm text-amber-100" role="alert">
+        <p
+          className="rounded-xl border border-amber-300/20 bg-amber-300/10 px-4 py-3 text-sm text-amber-100"
+          role="alert"
+        >
           {researchError}
         </p>
       ) : null}
 
       {research ? <ResearchResult research={research} /> : null}
+
+      {research ? (
+        <section className="rounded-2xl border border-white/10 bg-zinc-900/80 p-5">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <p className="text-xs font-medium text-lime-300">下一步</p>
+              <h2 className="mt-1 text-xl font-semibold text-white">生成多平台内容草稿</h2>
+              <p className="mt-2 text-sm leading-6 text-zinc-400">
+                仅使用已展示的研究结论生成微信公众号和小红书初稿。
+              </p>
+            </div>
+            <button
+              className="rounded-xl bg-lime-300 px-4 py-3 text-sm font-semibold text-zinc-950 transition hover:bg-lime-200 disabled:cursor-not-allowed disabled:opacity-40"
+              type="button"
+              disabled={isGeneratingContent}
+              onClick={handleGenerateContent}
+            >
+              {isGeneratingContent
+                ? "正在生成草稿…"
+                : contentDrafts
+                  ? "重新生成草稿"
+                  : "生成内容草稿"}
+            </button>
+          </div>
+
+          {contentError ? (
+            <p
+              className="mt-4 rounded-xl border border-amber-300/20 bg-amber-300/10 px-4 py-3 text-sm text-amber-100"
+              role="alert"
+            >
+              {contentError}
+            </p>
+          ) : null}
+        </section>
+      ) : null}
+
+      {contentDrafts ? (
+        <ContentDrafts
+          drafts={contentDrafts}
+          feedback={contentFeedback}
+          onFeedback={handleContentFeedback}
+        />
+      ) : null}
     </div>
   );
 }
