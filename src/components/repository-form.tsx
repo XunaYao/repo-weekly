@@ -3,7 +3,8 @@
 import { FormEvent, useState } from "react";
 import { ContentDrafts } from "@/components/content-drafts";
 import { ResearchResult } from "@/components/research-result";
-import type { ContentDraftResult, ContentSource } from "@/lib/content";
+import { isContentDraftResult, type ContentDraftResult, type ContentSource } from "@/lib/content";
+import { isRecord } from "@/lib/validation";
 import type { RepositoryData } from "@/lib/repository";
 import type { ResearchResult as ResearchResultData, ResearchSource } from "@/lib/research";
 
@@ -88,10 +89,11 @@ export function RepositoryForm() {
   const [contentFeedback, setContentFeedback] = useState<ContentFeedback | null>(null);
   const [status, setStatus] = useState<ResearchStatus>("idle");
   const [isGeneratingContent, setIsGeneratingContent] = useState(false);
-  const isLoading = status !== "idle";
+  const isLoading = status !== "idle" || isGeneratingContent;
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (isLoading) return;
 
     const input = parseGitHubRepository(repositoryUrl);
 
@@ -159,13 +161,11 @@ export function RepositoryForm() {
   }
 
   async function handleGenerateContent() {
-    if (!repository || !research || isGeneratingContent) {
+    if (!repository || !research || isLoading) {
       return;
     }
 
     setContentError("");
-    setContentDrafts(null);
-    setContentFeedback(null);
     setIsGeneratingContent(true);
 
     try {
@@ -174,14 +174,22 @@ export function RepositoryForm() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ source: createContentSource(repository, research) }),
       });
-      const payload: ApiResponse<ContentDraftResult> = await response.json();
+      const payload: unknown = await response.json();
 
-      if ("error" in payload) {
+      if (
+        isRecord(payload) &&
+        isRecord(payload.error) &&
+        typeof payload.error.message === "string"
+      ) {
         setContentError(payload.error.message);
         return;
       }
 
+      if (!response.ok || !isRecord(payload) || !isContentDraftResult(payload.data)) {
+        throw new Error("Invalid content response");
+      }
       setContentDrafts(payload.data);
+      setContentFeedback(null);
     } catch {
       setContentError("暂时无法生成内容草稿，请稍后再试。");
     } finally {

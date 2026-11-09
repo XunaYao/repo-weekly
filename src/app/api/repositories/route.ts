@@ -23,9 +23,7 @@ type GitHubRepository = {
   updated_at: string;
 };
 
-type ReadmeResult =
-  | { readme: CleanReadmeResult | null }
-  | { errorResponse: Response };
+type ReadmeResult = { readme: CleanReadmeResult | null } | { errorResponse: Response };
 
 function getRepositoryRequest(request: Request): RepositoryRequest | null {
   const url = new URL(request.url);
@@ -96,11 +94,7 @@ function toRepositoryData(
   };
 }
 
-async function getReadme(
-  owner: string,
-  repo: string,
-  headers: Headers,
-): Promise<ReadmeResult> {
+async function getReadme(owner: string, repo: string, headers: Headers): Promise<ReadmeResult> {
   const readmeHeaders = new Headers(headers);
   readmeHeaders.set("Accept", "application/vnd.github.raw+json");
 
@@ -124,11 +118,7 @@ export async function GET(request: Request) {
   const repositoryRequest = getRepositoryRequest(request);
 
   if (!repositoryRequest) {
-    return jsonError(
-      "INVALID_REPOSITORY",
-      "Missing 'owner' or 'repo' query parameter",
-      400,
-    );
+    return jsonError("INVALID_REPOSITORY", "Missing 'owner' or 'repo' query parameter", 400);
   }
 
   const { owner, repo, includeReadme } = repositoryRequest;

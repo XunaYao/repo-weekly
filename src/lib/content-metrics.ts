@@ -3,8 +3,9 @@ type ContentGenerationMetric = {
   durationMs: number;
   outcome: "success" | "failure";
   errorCode?: string;
-  modelCalls: 1;
-  structureValid: boolean;
+  modelCalls: number;
+  /** null 表示没有得到可供草稿结构校验的模型文本，不计入结构通过率分母。 */
+  structureValid: boolean | null;
 };
 
 type ContentFeedbackMetric = {

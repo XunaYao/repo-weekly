@@ -68,9 +68,13 @@ export function parseContentDraftResult(content: string): ContentDraftResult {
 }
 
 /** 根据已验证的研究资料生成两个平台的中文内容草稿。 */
-export async function generateContent(source: ContentSource): Promise<ContentDraftResult> {
+export async function generateContent(
+  source: ContentSource,
+  observation?: { onRequest: () => void; onResponse: () => void },
+): Promise<ContentDraftResult> {
   const content = await requestZhipuContent({
     temperature: 0.4,
+    onRequest: observation?.onRequest,
     messages: [
       { role: "system", content: CONTENT_SYSTEM_PROMPT },
       {
@@ -80,5 +84,6 @@ export async function generateContent(source: ContentSource): Promise<ContentDra
     ],
   });
 
+  observation?.onResponse();
   return parseContentDraftResult(content);
 }

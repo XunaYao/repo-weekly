@@ -24,7 +24,7 @@ export function ContentDrafts({ drafts, feedback, onFeedback }: ContentDraftsPro
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <p className="text-xs font-medium text-lime-300">多平台内容草稿</p>
-          <h2 className="mt-1 text-xl font-semibold text-white">可直接编辑的初稿</h2>
+          <h2 className="mt-1 text-xl font-semibold text-white">双平台内容初稿</h2>
         </div>
         <div className="flex items-center gap-2 text-xs">
           <span className="text-zinc-400">这份草稿有用吗？</span>
@@ -55,7 +55,7 @@ export function ContentDrafts({ drafts, feedback, onFeedback }: ContentDraftsPro
         </div>
       </div>
 
-      <div className="mt-5 grid gap-4 xl:grid-cols-2">
+      <div className="mt-5 grid gap-4">
         <article className="rounded-xl border border-sky-300/20 bg-sky-300/5 p-4">
           <p className="text-xs font-medium text-sky-200">微信公众号</p>
           <h3 className="mt-2 text-2xl font-semibold tracking-tight text-white">

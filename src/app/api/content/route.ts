@@ -7,6 +7,8 @@ import { ZhipuApiError } from "@/lib/zhipu";
 export async function POST(request: Request) {
   const startedAt = performance.now();
   let repositoryFullName: string | null = null;
+  let modelCalls = 0;
+  let receivedContent = false;
 
   try {
     const body: unknown = await request.json().catch(() => null);
@@ -17,13 +19,20 @@ export async function POST(request: Request) {
     }
 
     repositoryFullName = contentSource.repository.fullName;
-    const data = await generateContent(contentSource);
+    const data = await generateContent(contentSource, {
+      onRequest: () => {
+        modelCalls += 1;
+      },
+      onResponse: () => {
+        receivedContent = true;
+      },
+    });
 
     recordContentGenerationMetric({
       repositoryFullName,
       durationMs: Math.round(performance.now() - startedAt),
       outcome: "success",
-      modelCalls: 1,
+      modelCalls,
       structureValid: true,
     });
 
@@ -37,8 +46,8 @@ export async function POST(request: Request) {
         durationMs: Math.round(performance.now() - startedAt),
         outcome: "failure",
         errorCode: zhipuError?.code ?? "INTERNAL_ERROR",
-        modelCalls: 1,
-        structureValid: false,
+        modelCalls,
+        structureValid: receivedContent ? false : null,
       });
     }
 

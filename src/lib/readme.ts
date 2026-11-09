@@ -1,4 +1,3 @@
-
 export type CleanReadmeResult = {
   content: string;
   truncated: boolean;

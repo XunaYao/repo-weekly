@@ -7,6 +7,7 @@ type ZhipuMessage = {
 };
 
 type ZhipuRequest = {
+  onRequest?: () => void;
   messages: ZhipuMessage[];
   temperature?: number;
 };
@@ -61,19 +62,17 @@ function getZhipuFailure(response: Response, payload: ZhipuResponse) {
 }
 
 export async function requestZhipuContent({
+  onRequest,
   messages,
   temperature = 0,
 }: ZhipuRequest): Promise<string> {
   const apiKey = process.env.ZHIPU_API_KEY;
 
   if (!apiKey) {
-    throw new ZhipuApiError(
-      "ZHIPU_NOT_CONFIGURED",
-      "ZHIPU_API_KEY is not configured",
-      500,
-    );
+    throw new ZhipuApiError("ZHIPU_NOT_CONFIGURED", "ZHIPU_API_KEY is not configured", 500);
   }
 
+  onRequest?.();
   const response = await fetch(ZHIPU_API_URL, {
     method: "POST",
     headers: {
@@ -87,6 +86,7 @@ export async function requestZhipuContent({
       messages,
     }),
     cache: "no-store",
+    signal: AbortSignal.timeout(120_000),
   });
 
   const payload = (await response.json()) as ZhipuResponse;
@@ -98,11 +98,7 @@ export async function requestZhipuContent({
   const content = payload.choices?.[0]?.message?.content;
 
   if (!content) {
-    throw new ZhipuApiError(
-      "MODEL_RESPONSE_INVALID",
-      "智谱模型返回了空内容",
-      502,
-    );
+    throw new ZhipuApiError("MODEL_RESPONSE_INVALID", "智谱模型返回了空内容", 502);
   }
 
   return content;
